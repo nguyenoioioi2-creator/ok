@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiệu Ứng Trái Tim Hạt 3D</title>
+    <style>
+        /* Xóa khoảng trắng thừa và làm nền đen toàn màn hình */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Tiêu đề phía trên giống trong video */
+        .title {
+            position: absolute;
+            top: 10%;
+            color: #ffffff;
+            font-size: 2.5rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            pointer-events: none; /* Không cho chuột làm ảnh hưởng tiêu đề */
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Vùng chứa canvas hiển thị hiệu ứng */
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="title">Heart Animation</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        // 1. Khởi tạo môi trường 3D (Scene, Camera, Renderer)
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Tạo tập hợp các hạt (Particles)
+        const count = 3000; // Số lượng hạt hồng
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3); // Tọa độ x, y, z hiện tại của mỗi hạt
+        const targetPositions = new Float32Array(count * 3); // Tọa độ đích (Hình trái tim)
+
+        // Công thức tạo hình trái tim parametric
+        function getHeartPoint(t) {
+            // Hệ số nhân để phóng to hình trái tim
+            const scale = 0.6; 
+            const x = 16 * Math.pow(Math.sin(t), 3) * scale;
+            const y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * scale;
+            return { x, y };
+        }
+
+        // Vòng lặp khởi tạo vị trí cho từng hạt giống như logic trong video của bạn
+        for (let i = 0; i < count; i++) {
+            // Trộn đều góc t từ 0 đến 2*PI để phủ kín hình trái tim
+            const t = (i / count) * Math.PI * 2;
+            const heartPoint = getHeartPoint(t);
+
+            // Vị trí đích (Hình trái tim hoàn chỉnh) có thêm một chút độ nhiễu ngẫu nhiên (Random)
+            targetPositions[i * 3] = heartPoint.x + (Math.random() - 0.5) * 1.5;
+            targetPositions[i * 3 + 1] = heartPoint.y + (Math.random() - 0.5) * 1.5;
+            targetPositions[i * 3 + 2] = (Math.random() - 0.5) * 2; // Độ sâu 3D nông
+
+            // Vị trí xuất phát ban đầu: Đặt tất cả ở tâm (hoặc rải rác một cụm nhỏ)
+            positions[i * 3] = (Math.random() - 0.5) * 2;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 2;
+        }
+
+        // Đưa dữ liệu vị trí vào thuộc tính của Geometry
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        // Thiết kế vẻ ngoài cho các hạt (Màu hồng tươi, hình tròn nhòe)
+        const material = new THREE.PointsMaterial({
+            color: 0xff4d8d,
+            size: 0.15,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending, // Giúp các hạt chồng lên nhau sẽ sáng rực lên
+            depthWrite: false
+        });
+
+        // Tạo đối tượng Points và thêm vào không gian 3D
+        const particleSystem = new THREE.Points(geometry, material);
+        scene.add(particleSystem);
+
+        // 3. Sử dụng GSAP để làm hoạt ảnh bung ra thành hình trái tim tuần tự
+        const posAttribute = geometry.attributes.position;
+        
+        // Tạo một dòng thời gian (Timeline) lặp lại vô tận
+        const tl = gsap.timeline({ repeat: -1, yoyo: true, repeatDelay: 1.5 });
+
+        for (let i = 0; i < count; i++) {
+            // Tính toán thời gian trễ (delay) dựa trên vị trí hạt để tạo hiệu ứng vẽ vòng quanh
+            const delay = (i / count) * 2.5; 
+
+            tl.to(posAttribute.array, {
+                [i * 3]: targetPositions[i * 3],         // Di chuyển X
+                [i * 3 + 1]: targetPositions[i * 3 + 1], // Di chuyển Y
+                [i * 3 + 2]: targetPositions[i * 3 + 2], // Di chuyển Z
+                duration: 2 + Math.random() * 1.5,       // Thời gian bay của mỗi hạt
+                ease: "power2.inOut",
+                onUpdate: () => {
+                    posAttribute.needsUpdate = true; // Cập nhật vị trí liên tục cho GPU render
+                }
+            }, delay); // Chạy dựa trên biến delay đã tính
+        }
+
+        // 4. Vòng lặp Render (Animation Loop) giúp khung hình mượt mà
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Xoay nhẹ cụm hạt xung quanh trục Y để nhìn rõ hiệu ứng 3D
+            particleSystem.rotation.y = Math.sin(Date.now() * 0.001) * 0.2;
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 5. Xử lý khi người dùng thay đổi kích thước cửa sổ trình duyệt
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
